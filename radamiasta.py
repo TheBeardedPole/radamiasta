@@ -355,9 +355,24 @@ def page(title, body, desc=""):
             f'<style>{CSS}</style></head><body><main>{body}</main></body></html>')
 
 
+def roster_surnames():
+    radni = HERE / "radni.txt"
+    text = radni.read_text() if radni.exists() else ""
+    return {m.group(2) for m in re.finditer(r"([A-ZŁŚŻŹĆ]\w+) ([A-ZŁŚŻŹĆ][\w-]+)", text)}
+
+
+SURNAMES = roster_surnames()
+
+
 def who(names, spk):
+    """Only names whose surname is on the roster are published: guests' names come out
+    as Whisper heard them, and a first name alone says little. Others keep their role."""
     n = names.get(spk) or {}
-    return n.get("name") or f"Mówca {spk}", n.get("role") or ""
+    name = n.get("name") or ""
+    parts = name.split()
+    if len(parts) < 2 or parts[-1] not in SURNAMES:
+        name = ""
+    return name or f"Mówca {spk}", n.get("role") or ""
 
 
 def render_text(t):
