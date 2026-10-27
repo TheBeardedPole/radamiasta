@@ -1,0 +1,9 @@
+[Unit]
+Description=Szczecin council committee transcripts (download, transcribe, publish)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/radamiasta
+ExecStart=/usr/bin/python3 %h/projects/radamiasta/radamiasta.py run
+Nice=10

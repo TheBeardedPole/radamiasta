@@ -5,7 +5,7 @@ One pass (`./radamiasta.py`, run daily by a systemd timer):
   1. list the council's YouTube streams and keep the committee meetings ("Komisja");
   2. for each one not done yet: download the audio, transcribe it (faster-whisper,
      word timestamps) and separate the voices (sherpa-onnx), both via the helper
-     scripts and venv of ~/projects/media-suite;
+     scripts in helpers/, run with the venv that setup.sh makes;
   3. ask Claude (Sonnet, through the Claude Code subscription) to name the speakers
      and fix obvious recognition errors - nothing is rephrased or removed;
   4. build a static site in site/ and rsync it to Hostinger.
@@ -26,8 +26,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
 SITE = HERE / "site"
-SUITE = Path(os.environ.get("MEDIA_SUITE", Path.home() / "projects/media-suite"))
-PY = SUITE / ".venv/bin/python"
+HELPERS = HERE / "helpers"
+MODELS = HERE / "models"
+PY = Path(os.environ.get("RADAMIASTA_PYTHON", HERE / ".venv/bin/python"))
 CHANNEL = "https://www.youtube.com/@radamiastaszczecin7369/streams"
 COMMITTEE = re.compile(r"komisj|committee", re.I)
 YTDLP = [shutil.which("yt-dlp") or str(Path.home() / ".local/bin/yt-dlp"),
@@ -111,7 +112,7 @@ def transcribe(vid):
     out = DATA / vid / "asr.json"
     if not out.exists():
         log(f"  transcribing ({WHISPER})")
-        save(out, json.loads(run([str(PY), str(SUITE / "asr.py"), str(audio(vid)), "pl",
+        save(out, json.loads(run([str(PY), str(HELPERS / "asr.py"), str(audio(vid)), "pl",
                                   WHISPER, THREADS, "words"])))
     return load(out)
 
@@ -120,8 +121,8 @@ def diarize(vid):
     out = DATA / vid / "diar.json"
     if not out.exists():
         log("  separating voices")
-        data = json.loads(run([str(PY), str(SUITE / "diarize.py"), str(audio(vid)),
-                               str(SUITE / "models"), THRESHOLD, THREADS]))
+        data = json.loads(run([str(PY), str(HELPERS / "diarize.py"), str(audio(vid)),
+                               str(MODELS), THRESHOLD, THREADS]))
         for s in data["segments"]:
             s.pop("embedding", None)         # only needed for face/voice matching
         save(out, {"segments": data["segments"]})
@@ -420,7 +421,7 @@ def build():
 def deploy():
     cfg = dict(l.split("=", 1) for l in (HERE / "config.env").read_text().split("\n")
                if "=" in l and not l.startswith("#"))
-    ssh = (f'ssh -p {cfg.get("SSH_PORT", "65002")} -i {cfg["SSH_KEY"]} '
+    ssh = (f'ssh -p {cfg.get("SSH_PORT", "65002")} -i {os.path.expanduser(cfg["SSH_KEY"])} '
            f'-o StrictHostKeyChecking=accept-new')
     run(["rsync", "-rz", "--checksum", "--delete", "-e", ssh, f"{SITE}/",
          f'{cfg["SSH_USER"]}@{cfg["SSH_HOST"]}:{cfg["SSH_DIR"].rstrip("/")}/'])

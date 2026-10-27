@@ -2,3 +2,5 @@ data/
 site/
 config.env
 __pycache__/
+models
+.venv/
