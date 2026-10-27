@@ -100,7 +100,10 @@ def audio(vid):
         return wav
     log("  downloading audio")
     src = DATA / vid / "src"
-    run(YTDLP + ["-f", "bestaudio", "-o", f"{src}.%(ext)s", f"https://youtu.be/{vid}"])
+    # YouTube adds AI-dubbed tracks (English) and marks them as the default: plain
+    # "bestaudio" then transcribes the dub. Ask for the original track first.
+    run(YTDLP + ["-f", "ba[language^=pl]/ba[format_note*=original]/ba[format_note*=oryginal]/ba", "-o",
+                 f"{src}.%(ext)s", f"https://youtu.be/{vid}"])
     got = next(DATA.joinpath(vid).glob("src.*"))
     run(["ffmpeg", "-y", "-nostats", "-hide_banner", "-i", str(got), "-vn", "-ac", "1",
          "-ar", "16000", "-c:a", "pcm_s16le", str(wav)])
@@ -112,8 +115,14 @@ def transcribe(vid):
     out = DATA / vid / "asr.json"
     if not out.exists():
         log(f"  transcribing ({WHISPER})")
-        save(out, json.loads(run([str(PY), str(HELPERS / "asr.py"), str(audio(vid)), "pl",
-                                  WHISPER, THREADS, "words"])))
+        data = json.loads(run([str(PY), str(HELPERS / "asr.py"), str(audio(vid)), "pl",
+                               WHISPER, THREADS, "words"]))
+        en = len(re.findall(r"\b(the|and|of|is|that)\b", data["text"]))
+        pl = len(re.findall(r"\b(się|jest|nie|że|to)\b", data["text"]))
+        if en > pl:                    # a dubbed track slipped through
+            (DATA / vid / "audio.wav").unlink(missing_ok=True)
+            raise RuntimeError(f"transcript looks English ({en} vs {pl}): wrong audio track")
+        save(out, data)
     return load(out)
 
 
